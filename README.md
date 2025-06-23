@@ -1,7 +1,5 @@
 # OpenAI Context Assistant (Chrome Extension) v0.1
 
-![Extension Icon](icons/icon48.png)
-
 A Chrome extension that lets you analyze selected text with OpenAI's API via right-click context menu.
 
 ## Features
