@@ -36,36 +36,6 @@ Click the extension icon to configure:
 - Custom prompt template (default: `Analyze the following text and provide key insights:\n\n"{selectedText}"`)
 - Model selection (GPT-3.5 Turbo or GPT-4)
 
-## File Structure
-
-openai-context-assistant/
-
-├── icons/
-
-│ ├── icon48.png
-
-│ └── icon96.png
-
-├── screenshots/
-
-│ ├── config.png
-
-│ ├── context-menu.png
-
-│ └── response.png
-
-├── background.js
-
-├── manifest.json
-
-├── popup.html
-
-├── popup.js
-
-├── styles.css
-
-└── README.md
-
 
 ## Requirements
 
