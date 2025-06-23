@@ -1,8 +1,6 @@
 // Create context menu when extension is installed/updated
 chrome.runtime.onInstalled.addListener(() => {
-  // Remove any existing menu items to avoid duplicates
   chrome.contextMenus.removeAll(() => {
-    // Create new context menu item
     chrome.contextMenus.create({
       id: "openaiAnalyze",
       title: "Analyze with OpenAI",
@@ -15,7 +13,6 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "openaiAnalyze" && info.selectionText) {
     try {
-      // Get settings from storage
       const { apiKey, prompt, model } = await chrome.storage.sync.get([
         'apiKey',
         'prompt',
@@ -36,10 +33,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       await chrome.action.setBadgeText({ text: '...', tabId: tab.id });
       await chrome.action.setBadgeBackgroundColor({ color: '#4CAF50', tabId: tab.id });
 
-      // Prepare the prompt
       const finalPrompt = prompt.replace('{selectedText}', info.selectionText);
 
-      // Call OpenAI API
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -55,54 +50,98 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
       const data = await response.json();
       
-      if (data.error) {
-        throw new Error(data.error.message);
-      }
+      if (data.error) throw new Error(data.error.message);
+      if (!data.choices?.[0]?.message?.content) throw new Error('No response from OpenAI');
 
-      if (data.choices?.[0]?.message?.content) {
-        // Create a new popup window with the response
-        await chrome.windows.create({
-          url: `data:text/html,<html>
-                <head>
-                  <style>
-                    body { 
-                      padding: 20px; 
-                      font-family: Arial; 
-                      white-space: pre-wrap;
-                      max-width: 600px;
-                    }
-                    .close-btn {
-                      position: absolute;
-                      top: 10px;
-                      right: 10px;
-                      cursor: pointer;
-                    }
-                  </style>
-                </head>
-                <body>
-                  <div class="close-btn" onclick="window.close()">×</div>
-                  ${data.choices[0].message.content}
-                </body>
-                </html>`,
-          type: 'popup',
-          width: 650,
-          height: 500,
-          left: 200,
-          top: 200
-        });
-      } else {
-        throw new Error('No response from OpenAI');
-      }
+      // Send the response to the content script to show your dialog
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: showResponse,
+        args: [data.choices[0].message.content]
+      });
+
     } catch (error) {
       console.error('OpenAI Error:', error);
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/icon48.png',
-        title: 'OpenAI Error',
-        message: error.message || 'An unknown error occurred'
+      // Send error to content script to show in dialog
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: showResponse,
+        args: [`Error: ${error.message}`]
       });
     } finally {
       await chrome.action.setBadgeText({ text: '', tabId: tab.id });
     }
   }
 });
+
+// This function will be serialized and sent to the content script
+function showResponse(content) {
+  // Your existing dialog implementation
+  let currentDialog = null;
+  
+  // Close existing dialog if any
+  if (currentDialog) currentDialog.remove();
+  
+  // Create new dialog
+  currentDialog = document.createElement('div');
+  currentDialog.style = `
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(80vw, 600px);
+    max-height: 70vh;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    z-index: 2147483647;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  `;
+  
+  currentDialog.innerHTML = `
+    <div style="padding: 16px; border-bottom: 1px solid #eee; 
+                display: flex; justify-content: space-between;
+                align-items: center; background: #f9f9f9;">
+      <h3 style="margin: 0;">AI Analysis</h3>
+      <button id="close-dialog" style="background: none; border: none; 
+             cursor: pointer; font-size: 20px;">×</button>
+    </div>
+    <div style="padding: 16px; overflow-y: auto; flex-grow: 1;">
+      ${content}
+    </div>
+    <div style="padding: 8px 16px; border-top: 1px solid #eee; 
+                text-align: right; background: #f9f9f9;">
+      <button id="copy-btn" style="padding: 4px 8px; margin-right: 8px;">Copy</button>
+      <button id="close-btn" style="padding: 4px 8px;">Close</button>
+    </div>
+  `;
+  
+  // Add functionality
+  currentDialog.querySelector('#close-dialog').onclick = () => currentDialog.remove();
+  currentDialog.querySelector('#close-btn').onclick = () => currentDialog.remove();
+  currentDialog.querySelector('#copy-btn').onclick = () => {
+    navigator.clipboard.writeText(content);
+  };
+  
+  // Add to page
+  document.body.appendChild(currentDialog);
+  
+  // Add overlay
+  const overlay = document.createElement('div');
+  overlay.style = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 2147483646;
+  `;
+  overlay.onclick = () => {
+    currentDialog.remove();
+    overlay.remove();
+  };
+  document.body.appendChild(overlay);
+}
